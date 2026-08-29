@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Fältrutt — dagens fält</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<style>
+  :root{
+    --wheat:#F5EFE0;
+    --card:#FFFDF7;
+    --ink:#2B2B24;
+    --ink-soft:#5B5A4E;
+    --forest:#1F3D2B;
+    --forest-2:#2C5540;
+    --safety:#F2600C;
+    --safety-dark:#C94E09;
+    --sage:#8A9B7E;
+    --line:#D8CDA9;
+    --done:#B9C6AC;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--wheat);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace; }
+  .wrap{ max-width:640px; margin:0 auto; padding:20px 16px 80px; }
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:18px; padding-bottom:14px; border-bottom:3px solid var(--forest);
+  }
+  header.top h1{ font-size:22px; letter-spacing:0.04em; text-transform:uppercase; color:var(--forest); margin:0; font-weight:800; }
+  header.top .tag{ font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-soft); font-weight:600; }
+
+  .add-card{
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:16px; margin-bottom:22px; box-shadow:0 1px 0 rgba(0,0,0,0.03);
+  }
+  .add-card h2{ margin:0 0 12px; font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--forest); font-weight:800; }
+  label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-soft); font-weight:700; margin:10px 0 4px; }
+  input[type=text], textarea{
+    width:100%; padding:10px 12px; font-size:15px; border:1.5px solid var(--line);
+    border-radius:7px; background:#fff; color:var(--ink); font-family:inherit;
+  }
+  textarea{ resize:vertical; min-height:44px; }
+  input:focus, textarea:focus{ outline:2px solid var(--safety); outline-offset:1px; }
+
+  .search-row{ display:flex; gap:8px; margin-bottom:10px; }
+  .search-row input{ flex:1; }
+  .search-row button{
+    padding:0 14px; border-radius:7px; border:1.5px solid var(--forest);
+    background:#fff; color:var(--forest); font-weight:800; font-size:13px; cursor:pointer;
+  }
+  .map{ height:320px; border-radius:8px; border:1.5px solid var(--line); margin-bottom:10px; }
+  .hint{ font-size:13px; color:var(--ink-soft); text-align:center; margin:6px 0 0; }
+  .pending-form{ display:none; border-top:1px dashed var(--line); margin-top:10px; padding-top:10px; }
+
+  .add-row{ display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+  .btn{
+    display:inline-flex; align-items:center; gap:6px; padding:11px 18px; border-radius:8px;
+    border:none; font-weight:800; font-size:13px; letter-spacing:0.04em; text-transform:uppercase; cursor:pointer;
+  }
+  .btn-forest{ background:var(--forest); color:var(--wheat); }
+  .btn-safety{ background:var(--safety); color:#fff; }
+  .btn-safety:active{ background:var(--safety-dark); }
+  .btn-ghost{ background:transparent; color:var(--forest); border:2px solid var(--forest); }
+  .btn:disabled{ opacity:0.4; cursor:not-allowed; }
+
+  .route{ position:relative; padding-left:34px; }
+  .route::before{
+    content:""; position:absolute; left:14px; top:6px; bottom:6px; width:0; border-left:2px dashed var(--sage);
+  }
+  .stop{ position:relative; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px 14px 12px; margin-bottom:14px; }
+  .stop.done{ background:var(--done); border-color:var(--sage); }
+  .stop.done .stop-name{ text-decoration:line-through; color:var(--ink-soft); }
+  .tag-num{
+    position:absolute; left:-34px; top:12px; width:26px; height:26px; border-radius:50%;
+    background:var(--forest); color:var(--wheat); display:flex; align-items:center; justify-content:center;
+    font-size:12px; font-weight:800; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    box-shadow:0 0 0 4px var(--wheat);
+  }
+  .stop-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+  .stop-name{ font-size:16px; font-weight:800; color:var(--ink); margin:0 0 2px; }
+  .stop-loc{ font-size:12px; color:var(--ink-soft); margin:0 0 6px; word-break:break-word; }
+  .stop-note{ font-size:14px; color:var(--ink); margin:6px 0 0; line-height:1.4; }
+  .stop-actions{ display:flex; gap:6px; flex-shrink:0; }
+  .icon-btn{
+    width:30px; height:30px; border-radius:6px; border:1.5px solid var(--line); background:#fff;
+    color:var(--ink-soft); font-size:14px; display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;
+  }
+  .icon-btn:hover{ border-color:var(--forest); color:var(--forest); }
+  .stop-footer{
+    display:flex; align-items:center; justify-content:space-between; margin-top:12px; padding-top:10px; border-top:1px dashed var(--line);
+  }
+  .check-label{
+    display:flex; align-items:center; gap:8px; font-size:13px; font-weight:700; color:var(--ink-soft);
+    cursor:pointer; margin:0; text-transform:none; letter-spacing:0;
+  }
+  .check-label input{ width:18px; height:18px; }
+  .nav-btn{
+    background:var(--safety); color:#fff; border:none; border-radius:7px; padding:9px 14px;
+    font-weight:800; font-size:13px; text-decoration:none; display:inline-flex; align-items:center;
+    gap:6px; text-transform:uppercase; letter-spacing:0.03em;
+  }
+  .empty{ text-align:center; color:var(--ink-soft); padding:30px 10px; font-size:14px; }
+
+  .share-card{ background:var(--forest); color:var(--wheat); border-radius:10px; padding:16px; margin-top:18px; }
+  .share-card h2{ margin:0 0 4px; font-size:13px; text-transform:uppercase; letter-spacing:0.08em; font-weight:800; }
+  .share-card p{ margin:0 0 12px; font-size:12px; color:#CFE0D2; }
+  .share-row{ display:flex; gap:8px; }
+  .share-row input{ flex:1; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.25); color:#fff; font-size:12px; }
+  .share-row input:focus{ outline:2px solid var(--safety); }
+
+  .progress{ font-size:12px; color:var(--ink-soft); font-weight:700; margin-bottom:14px; text-transform:uppercase; letter-spacing:0.05em; }
+  .toast{
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:var(--forest); color:var(--wheat);
+    padding:10px 18px; border-radius:8px; font-size:13px; font-weight:700; opacity:0; transition:opacity 0.2s; pointer-events:none;
+  }
+  .toast.show{ opacity:1; }
+
+  /* map markers (divIcon content) */
+  .marker-num{
+    width:26px; height:26px; border-radius:50%; background:#1F3D2B; color:#F5EFE0;
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border:2px solid #F5EFE0; box-shadow:0 0 0 1px #1F3D2B;
+  }
+  .marker-pending{
+    width:22px; height:22px; border-radius:50%; background:#F2600C; border:3px solid #fff; box-shadow:0 0 0 2px #F2600C;
+  }
+
+  @media (min-width:520px){
+    .add-grid{ display:flex; gap:10px; }
+    .add-grid > div{ flex:1; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  var els = { app: document.getElementById('app'), toast: document.getElementById('toast') };
+
+  function uid(){ return Math.random().toString(36).slice(2,9); }
+
+  function encodeStops(stops){
+    var compact = stops.map(function(s){ return {n:s.name, a:s.loc, o:s.note}; });
+    var json = JSON.stringify(compact);
+    return btoa(unescape(encodeURIComponent(json)));
+  }
+  function decodeStops(b64){
+    var json = decodeURIComponent(escape(atob(b64)));
+    var compact = JSON.parse(json);
+    return compact.map(function(c){ return {id:uid(), name:c.n, loc:c.a, note:c.o||''}; });
+  }
+  function mapsUrl(loc){
+    return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(loc);
+  }
+  function smsHref(body){
+    var isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    var sep = isIOS ? '&' : '?';
+    return 'sms:' + sep + 'body=' + encodeURIComponent(body);
+  }
+  function parseLatLng(str){
+    var parts = str.split(',').map(function(p){ return parseFloat(p); });
+    return [parts[0], parts[1]];
+  }
+  function toast(msg){
+    els.toast.textContent = msg;
+    els.toast.classList.add('show');
+    setTimeout(function(){ els.toast.classList.remove('show'); }, 1800);
+  }
+  function escapeHtml(str){
+    return (str||'').replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  var hash = window.location.hash;
+  var isViewMode = hash.indexOf('#s=') === 0;
+
+  if (isViewMode) {
+    renderViewMode(hash.slice(3));
+  } else {
+    renderCreateMode();
+  }
+
+  // ================= CREATE MODE =================
+  function renderCreateMode(){
+    var stops = [];
+    var pending = null;
+    var map, pendingMarker;
+    var stopMarkers = {};
+
+    buildSkeleton();
+    initMap();
+    drawList();
+    drawShare();
+
+    function buildSkeleton(){
+      els.app.innerHTML =
+        '<header class="top">'+
+          '<h1>Fältrutt</h1>'+
+          '<span class="tag">Skapa rutt</span>'+
+        '</header>'+
+
+        '<div class="add-card">'+
+          '<h2>Välj fält på kartan</h2>'+
+          '<div class="search-row">'+
+            '<input type="text" id="search-input" placeholder="Sök ort eller adress för att hitta rätt trakt">'+
+            '<button id="search-btn">Sök</button>'+
+          '</div>'+
+          '<div class="map" id="map"></div>'+
+          '<p class="hint" id="pending-hint">Tryck på kartan där fältets infart är.</p>'+
+          '<div class="pending-form" id="pending-form">'+
+            '<label for="f-name">Namn / fält</label>'+
+            '<input type="text" id="f-name" placeholder="t.ex. Norrgården, Skifte 4">'+
+            '<label for="f-note">Notering (valfritt)</label>'+
+            '<textarea id="f-note" placeholder="t.ex. Harva 3 ha, port kod 1234"></textarea>'+
+            '<div class="add-row">'+
+              '<button class="btn btn-ghost" id="cancel-btn">Avbryt</button>'+
+              '<button class="btn btn-forest" id="add-btn">+ Lägg till fält</button>'+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+
+        '<div id="list-wrap"></div>'+
+        '<div id="share-wrap"></div>';
+
+      document.getElementById('search-btn').onclick = doSearch;
+      document.getElementById('search-input').addEventListener('keydown', function(e){
+        if (e.key === 'Enter'){ e.preventDefault(); doSearch(); }
+      });
+      document.getElementById('cancel-btn').onclick = cancelPending;
+      document.getElementById('add-btn').onclick = confirmAdd;
+      document.getElementById('f-name').addEventListener('keydown', function(e){
+        if (e.key === 'Enter'){ e.preventDefault(); confirmAdd(); }
+      });
+    }
+
+    function initMap(){
+      map = L.map('map', {zoomControl:true}).setView([62.0, 15.0], 5);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom:19,
+        attribution:'&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      if (navigator.geolocation){
+        navigator.geolocation.getCurrentPosition(function(pos){
+          map.setView([pos.coords.latitude, pos.coords.longitude], 13);
+        }, function(){ /* keep fallback view */ }, {timeout:4000});
+      }
+
+      map.on('click', function(e){
+        setPending(e.latlng.lat, e.latlng.lng);
+      });
+    }
+
+    function pendingIcon(){
+      return L.divIcon({ className:'', html:'<div class="marker-pending"></div>', iconSize:[22,22], iconAnchor:[11,11] });
+    }
+    function numIcon(num){
+      return L.divIcon({ className:'', html:'<div class="marker-num">'+num+'</div>', iconSize:[26,26], iconAnchor:[13,13] });
+    }
+
+    function setPending(lat,lng){
+      pending = {lat:lat, lng:lng};
+      if (pendingMarker) map.removeLayer(pendingMarker);
+      pendingMarker = L.marker([lat,lng], {draggable:true, icon:pendingIcon()}).addTo(map);
+      pendingMarker.on('drag', function(e){
+        var ll = e.target.getLatLng();
+        pending = {lat:ll.lat, lng:ll.lng};
+      });
+      document.getElementById('pending-hint').style.display = 'none';
+      document.getElementById('pending-form').style.display = 'block';
+      document.getElementById('f-name').focus();
+    }
+
+    function cancelPending(){
+      if (pendingMarker){ map.removeLayer(pendingMarker); pendingMarker=null; }
+      pending = null;
+      document.getElementById('f-name').value='';
+      document.getElementById('f-note').value='';
+      document.getElementById('pending-form').style.display='none';
+      document.getElementById('pending-hint').style.display='block';
+    }
+
+    function confirmAdd(){
+      if (!pending){ toast('Tryck på kartan för att välja en plats först'); return; }
+      var name = document.getElementById('f-name').value.trim();
+      var note = document.getElementById('f-note').value.trim();
+      if (!name){ toast('Namn krävs'); return; }
+      var s = { id:uid(), name:name, loc: pending.lat.toFixed(6)+','+pending.lng.toFixed(6), note:note };
+      stops.push(s);
+      if (pendingMarker){ map.removeLayer(pendingMarker); pendingMarker=null; }
+      stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(stops.length)}).addTo(map);
+      pending = null;
+      document.getElementById('f-name').value='';
+      document.getElementById('f-note').value='';
+      document.getElementById('pending-form').style.display='none';
+      document.getElementById('pending-hint').style.display='block';
+      drawList();
+      drawShare();
+    }
+
+    function refreshMarkers(){
+      Object.keys(stopMarkers).forEach(function(id){ map.removeLayer(stopMarkers[id]); });
+      stopMarkers = {};
+      stops.forEach(function(s,i){
+        stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(i+1)}).addTo(map);
+      });
+    }
+
+    function doSearch(){
+      var q = document.getElementById('search-input').value.trim();
+      if (!q) return;
+      fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
+        .then(function(r){ return r.json(); })
+        .then(function(results){
+          if (results && results[0]){
+            map.setView([parseFloat(results[0].lat), parseFloat(results[0].lon)], 14);
+          } else {
+            toast('Hittade inget för "'+q+'"');
+          }
+        })
+        .catch(function(){ toast('Sökningen misslyckades'); });
+    }
+
+    function drawList(){
+      var wrap = document.getElementById('list-wrap');
+      if (!stops.length){
+        wrap.innerHTML = '<p class="empty">Inga fält tillagda ännu — tryck på kartan för att börja.</p>';
+        return;
+      }
+      wrap.innerHTML = '<div class="route">' + stops.map(function(s, i){
+        return stopCardHtml(s, i, stops.length, true);
+      }).join('') + '</div>';
+
+      stops.forEach(function(s, i){
+        var up = document.getElementById('up-'+s.id);
+        var down = document.getElementById('down-'+s.id);
+        var del = document.getElementById('del-'+s.id);
+        if (up) up.onclick = function(){ move(i,-1); };
+        if (down) down.onclick = function(){ move(i,1); };
+        if (del) del.onclick = function(){ stops.splice(i,1); refreshMarkers(); drawList(); drawShare(); };
+      });
+    }
+
+    function move(i, dir){
+      var j = i+dir;
+      if (j<0 || j>=stops.length) return;
+      var tmp = stops[i]; stops[i]=stops[j]; stops[j]=tmp;
+      refreshMarkers();
+      drawList();
+      drawShare();
+    }
+
+    function drawShare(){
+      var wrap = document.getElementById('share-wrap');
+      if (!stops.length){ wrap.innerHTML=''; return; }
+      wrap.innerHTML =
+        '<div class="share-card">'+
+          '<h2>Dela rutten</h2>'+
+          '<p>Skicka länken till arbetaren via SMS — den öppnas direkt som en rutt med navigering.</p>'+
+          '<div class="share-row">'+
+            '<input type="text" id="share-link" class="mono" readonly>'+
+            '<button class="btn btn-safety" id="copy-btn">Kopiera</button>'+
+          '</div>'+
+          '<div class="add-row" style="margin-top:10px;">'+
+            '<a class="btn btn-forest" id="sms-btn" style="text-decoration:none;">&#128172; Skicka SMS</a>'+
+          '</div>'+
+        '</div>';
+      var link = window.location.href.split('#')[0] + '#s=' + encodeStops(stops);
+      var input = document.getElementById('share-link');
+      input.value = link;
+      document.getElementById('copy-btn').onclick = function(){
+        input.select();
+        input.setSelectionRange(0,999999);
+        navigator.clipboard && navigator.clipboard.writeText(link).catch(function(){});
+        try{ document.execCommand('copy'); }catch(e){}
+        toast('Länk kopierad');
+      };
+      document.getElementById('sms-btn').href = smsHref('Dagens fältrutt: ' + link);
+    }
+  }
+
+  function stopCardHtml(s, i, total, editable){
+    var num = i+1;
+    var editControls = editable ? (
+      '<div class="stop-actions">'+
+        '<button class="icon-btn" id="up-'+s.id+'" '+(i===0?'disabled':'')+' title="Flytta upp">&uarr;</button>'+
+        '<button class="icon-btn" id="down-'+s.id+'" '+(i===total-1?'disabled':'')+' title="Flytta ner">&darr;</button>'+
+        '<button class="icon-btn" id="del-'+s.id+'" title="Ta bort">&times;</button>'+
+      '</div>'
+    ) : '';
+    return (
+      '<div class="stop" id="stopcard-'+s.id+'">'+
+        '<div class="tag-num mono">'+num+'</div>'+
+        '<div class="stop-top">'+
+          '<div>'+
+            '<p class="stop-name">'+escapeHtml(s.name)+'</p>'+
+            '<p class="stop-loc mono">'+escapeHtml(s.loc)+'</p>'+
+            (s.note ? '<p class="stop-note">'+escapeHtml(s.note)+'</p>' : '')+
+          '</div>'+
+          editControls+
+        '</div>'+
+        (editable ? '' :
+          '<div class="stop-footer">'+
+            '<label class="check-label">'+
+              '<input type="checkbox" id="chk-'+s.id+'"> Klart'+
+            '</label>'+
+            '<a class="nav-btn" href="'+mapsUrl(s.loc)+'" target="_blank" rel="noopener">&#8594; Navigera</a>'+
+          '</div>'
+        )+
+      '</div>'
+    );
+  }
+
+  // ================= VIEW MODE =================
+  function renderViewMode(b64){
+    var stops;
+    try{
+      stops = decodeStops(b64);
+    }catch(e){
+      els.app.innerHTML = '<header class="top"><h1>Fältrutt</h1></header>'+
+        '<p class="empty">Länken kunde inte läsas. Be om en ny länk.</p>';
+      return;
+    }
+    var storeKey = 'faltrutt_' + b64.slice(0,24);
+    var doneMap = {};
+    try{ doneMap = JSON.parse(localStorage.getItem(storeKey) || '{}'); }catch(e){}
+
+    draw();
+
+    function draw(){
+      var doneCount = stops.filter(function(s){ return doneMap[s.id]; }).length;
+      els.app.innerHTML =
+        '<header class="top">'+
+          '<h1>Fältrutt</h1>'+
+          '<span class="tag">Dagens fält</span>'+
+        '</header>'+
+        '<p class="progress">'+doneCount+' av '+stops.length+' fält klara</p>'+
+        '<div class="route">' + stops.map(function(s,i){
+          return stopCardHtml(s, i, stops.length, false);
+        }).join('') + '</div>';
+
+      stops.forEach(function(s){
+        var chk = document.getElementById('chk-'+s.id);
+        if (!chk) return;
+        chk.checked = !!doneMap[s.id];
+        applyDoneStyle(s.id, chk.checked);
+        chk.onchange = function(){
+          doneMap[s.id] = chk.checked;
+          localStorage.setItem(storeKey, JSON.stringify(doneMap));
+          applyDoneStyle(s.id, chk.checked);
+          var count = stops.filter(function(x){ return doneMap[x.id]; }).length;
+          document.querySelector('.progress').textContent = count+' av '+stops.length+' fält klara';
+        };
+      });
+    }
+    function applyDoneStyle(id, isDone){
+      var card = document.getElementById('stopcard-'+id);
+      if (card) card.classList.toggle('done', isDone);
+    }
+  }
+})();
+</script>
+</body>
+</html>
