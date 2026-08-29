@@ -130,6 +130,7 @@
     display:flex; align-items:center; justify-content:center; font-weight:800; font-size:12px;
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border:2px solid #F5EFE0; box-shadow:0 0 0 1px #1F3D2B;
   }
+  .marker-num.marker-done{ background:#8A9B7E; opacity:0.75; }
   .marker-pending{
     width:22px; height:22px; border-radius:50%; background:#F2600C; border:3px solid #fff; box-shadow:0 0 0 2px #F2600C;
   }
@@ -171,6 +172,13 @@
   function parseLatLng(str){
     var parts = str.split(',').map(function(p){ return parseFloat(p); });
     return [parts[0], parts[1]];
+  }
+  function numIcon(num, done){
+    return L.divIcon({
+      className:'',
+      html:'<div class="marker-num'+(done?' marker-done':'')+'">'+num+'</div>',
+      iconSize:[26,26], iconAnchor:[13,13]
+    });
   }
   function toast(msg){
     els.toast.textContent = msg;
@@ -266,9 +274,6 @@
     function pendingIcon(){
       return L.divIcon({ className:'', html:'<div class="marker-pending"></div>', iconSize:[22,22], iconAnchor:[11,11] });
     }
-    function numIcon(num){
-      return L.divIcon({ className:'', html:'<div class="marker-num">'+num+'</div>', iconSize:[26,26], iconAnchor:[13,13] });
-    }
 
     function setPending(lat,lng){
       pending = {lat:lat, lng:lng};
@@ -300,7 +305,7 @@
       var s = { id:uid(), name:name, loc: pending.lat.toFixed(6)+','+pending.lng.toFixed(6), note:note };
       stops.push(s);
       if (pendingMarker){ map.removeLayer(pendingMarker); pendingMarker=null; }
-      stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(stops.length)}).addTo(map);
+      stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(stops.length, false)}).addTo(map);
       pending = null;
       document.getElementById('f-name').value='';
       document.getElementById('f-note').value='';
@@ -314,7 +319,7 @@
       Object.keys(stopMarkers).forEach(function(id){ map.removeLayer(stopMarkers[id]); });
       stopMarkers = {};
       stops.forEach(function(s,i){
-        stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(i+1)}).addTo(map);
+        stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(i+1, false)}).addTo(map);
       });
     }
 
@@ -437,19 +442,50 @@
     var doneMap = {};
     try{ doneMap = JSON.parse(localStorage.getItem(storeKey) || '{}'); }catch(e){}
 
-    draw();
+    var map, stopMarkers = {};
 
-    function draw(){
-      var doneCount = stops.filter(function(s){ return doneMap[s.id]; }).length;
+    buildSkeleton();
+    initMap();
+    drawList();
+
+    function buildSkeleton(){
       els.app.innerHTML =
         '<header class="top">'+
           '<h1>Fältrutt</h1>'+
           '<span class="tag">Dagens fält</span>'+
         '</header>'+
-        '<p class="progress">'+doneCount+' av '+stops.length+' fält klara</p>'+
-        '<div class="route">' + stops.map(function(s,i){
-          return stopCardHtml(s, i, stops.length, false);
-        }).join('') + '</div>';
+        '<div class="map" id="overview-map"></div>'+
+        '<p class="progress" id="progress-text"></p>'+
+        '<div id="list-wrap"></div>';
+    }
+
+    function initMap(){
+      map = L.map('overview-map', {zoomControl:true});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom:19,
+        attribution:'&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      stops.forEach(function(s,i){
+        stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(i+1, !!doneMap[s.id])}).addTo(map);
+      });
+
+      if (stops.length === 1){
+        map.setView(parseLatLng(stops[0].loc), 14);
+      } else if (stops.length > 1){
+        var bounds = L.latLngBounds(stops.map(function(s){ return parseLatLng(s.loc); }));
+        map.fitBounds(bounds, {padding:[28,28]});
+      } else {
+        map.setView([62.0,15.0], 5);
+      }
+    }
+
+    function drawList(){
+      updateProgress();
+      var wrap = document.getElementById('list-wrap');
+      wrap.innerHTML = '<div class="route">' + stops.map(function(s,i){
+        return stopCardHtml(s, i, stops.length, false);
+      }).join('') + '</div>';
 
       stops.forEach(function(s){
         var chk = document.getElementById('chk-'+s.id);
@@ -460,14 +496,23 @@
           doneMap[s.id] = chk.checked;
           localStorage.setItem(storeKey, JSON.stringify(doneMap));
           applyDoneStyle(s.id, chk.checked);
-          var count = stops.filter(function(x){ return doneMap[x.id]; }).length;
-          document.querySelector('.progress').textContent = count+' av '+stops.length+' fält klara';
+          updateProgress();
         };
       });
     }
+
+    function updateProgress(){
+      var count = stops.filter(function(s){ return doneMap[s.id]; }).length;
+      document.getElementById('progress-text').textContent = count+' av '+stops.length+' fält klara';
+    }
+
     function applyDoneStyle(id, isDone){
       var card = document.getElementById('stopcard-'+id);
       if (card) card.classList.toggle('done', isDone);
+      var idx = stops.findIndex(function(s){ return s.id === id; });
+      if (idx > -1 && stopMarkers[id]){
+        stopMarkers[id].setIcon(numIcon(idx+1, isDone));
+      }
     }
   }
 })();
