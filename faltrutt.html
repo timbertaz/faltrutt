@@ -173,7 +173,7 @@
   function decodeStops(b64){
     var json = decodeURIComponent(escape(atob(b64)));
     var compact = JSON.parse(json);
-    return compact.map(function(c){ return {id:uid(), name:c.n, loc:c.a, note:c.o||''}; });
+    return compact.map(function(c,i){ return {id:'s'+i, name:c.n, loc:c.a, note:c.o||''}; });
   }
   function mapsUrl(loc){
     return 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(loc);
@@ -514,7 +514,9 @@
         '<p class="empty">Länken kunde inte läsas. Be om en ny länk.</p>';
       return;
     }
-    var storeKey = 'faltrutt_' + b64.slice(0,24);
+    var hashStr = 5381;
+    for (var hi = 0; hi < b64.length; hi++){ hashStr = ((hashStr * 33) ^ b64.charCodeAt(hi)) >>> 0; }
+    var storeKey = 'faltrutt_' + hashStr.toString(36);
     var doneMap = {};
     try{ doneMap = JSON.parse(localStorage.getItem(storeKey) || '{}'); }catch(e){}
 
@@ -532,7 +534,12 @@
         '</header>'+
         '<div class="map" id="overview-map"></div>'+
         '<p class="progress" id="progress-text"></p>'+
-        '<div id="list-wrap"></div>';
+        '<div id="list-wrap"></div>'+
+        '<div class="share-card" style="margin-top:6px;">'+
+          '<h2>Rapportera framsteg</h2>'+
+          '<p>Skickar ett SMS med namnen på fälten du markerat som klara.</p>'+
+          '<a class="btn btn-safety" id="report-btn" href="#" style="width:100%;justify-content:center;text-decoration:none;">&#128172; Skicka status via SMS</a>'+
+        '</div>';
     }
 
     function initMap(){
@@ -578,6 +585,23 @@
     function updateProgress(){
       var count = stops.filter(function(s){ return doneMap[s.id]; }).length;
       document.getElementById('progress-text').textContent = count+' av '+stops.length+' fält klara';
+      updateReport();
+    }
+
+    function updateReport(){
+      var btn = document.getElementById('report-btn');
+      if (!btn) return;
+      var done = stops.filter(function(s){ return doneMap[s.id]; });
+      var lines = ['Fältrutt: ' + done.length + ' av ' + stops.length + ' fält klara'];
+      done.forEach(function(s){ lines.push('- ' + s.name); });
+      btn.href = done.length ? smsHref(lines.join('\n')) : '#';
+      btn.style.opacity = done.length ? '1' : '0.5';
+      btn.onclick = function(e){
+        if (!done.length){
+          e.preventDefault();
+          toast('Markera minst ett fält som klart först');
+        }
+      };
     }
 
     function applyDoneStyle(id, isDone){
