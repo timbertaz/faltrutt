@@ -131,6 +131,20 @@
     font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; border:2px solid #F5EFE0; box-shadow:0 0 0 1px #1F3D2B;
   }
   .marker-num.marker-done{ background:#8A9B7E; opacity:0.75; }
+  .marker-me{
+    width:18px; height:18px; border-radius:50%; background:#2F7BFF; border:3px solid #fff;
+    box-shadow:0 0 0 2px rgba(47,123,255,0.4), 0 1px 4px rgba(0,0,0,0.4);
+    animation:mepulse 2s ease-out infinite;
+  }
+  @keyframes mepulse{
+    0%{ box-shadow:0 0 0 2px rgba(47,123,255,0.5), 0 1px 4px rgba(0,0,0,0.4); }
+    70%{ box-shadow:0 0 0 14px rgba(47,123,255,0), 0 1px 4px rgba(0,0,0,0.4); }
+    100%{ box-shadow:0 0 0 2px rgba(47,123,255,0), 0 1px 4px rgba(0,0,0,0.4); }
+  }
+  .locate-btn{
+    width:34px; height:34px; display:flex; align-items:center; justify-content:center;
+    background:#fff; color:#2F7BFF; font-size:20px; line-height:1; cursor:pointer; text-decoration:none;
+  }
   .marker-pending{
     width:22px; height:22px; border-radius:50%; background:#F2600C; border:3px solid #fff; box-shadow:0 0 0 2px #F2600C;
   }
@@ -190,6 +204,52 @@
     map.on('baselayerchange', function(e){
       try{ localStorage.setItem('faltrutt_basemap', e.layer === street ? 'street' : 'sat'); }catch(x){}
     });
+  }
+  function addLocationDot(map){
+    if (!navigator.geolocation) return;
+    var dot = null, circle = null, last = null;
+
+    navigator.geolocation.watchPosition(function(pos){
+      last = [pos.coords.latitude, pos.coords.longitude];
+      var acc = pos.coords.accuracy || 0;
+      if (!dot){
+        circle = L.circle(last, {
+          radius:acc, color:'#2F7BFF', weight:1, fillColor:'#2F7BFF', fillOpacity:0.12, interactive:false
+        }).addTo(map);
+        dot = L.marker(last, {
+          icon:L.divIcon({ className:'', html:'<div class="marker-me"></div>', iconSize:[18,18], iconAnchor:[9,9] }),
+          interactive:false, keyboard:false, zIndexOffset:1000
+        }).addTo(map);
+      } else {
+        dot.setLatLng(last);
+        circle.setLatLng(last);
+        circle.setRadius(acc);
+      }
+    }, function(){
+      /* no permission or no signal: just show no dot */
+    }, { enableHighAccuracy:true, maximumAge:10000, timeout:20000 });
+
+    var Locate = L.Control.extend({
+      options:{ position:'topleft' },
+      onAdd:function(){
+        var bar = L.DomUtil.create('div', 'leaflet-bar');
+        var a = L.DomUtil.create('a', 'locate-btn', bar);
+        a.href = '#';
+        a.title = 'Visa min position';
+        a.innerHTML = '&#9678;';
+        L.DomEvent.disableClickPropagation(bar);
+        L.DomEvent.on(a, 'click', function(e){
+          L.DomEvent.preventDefault(e);
+          if (last){
+            map.setView(last, Math.max(map.getZoom(), 15));
+          } else {
+            toast('Söker din position… tillåt platsåtkomst om webbläsaren frågar');
+          }
+        });
+        return bar;
+      }
+    });
+    new Locate().addTo(map);
   }
   function numIcon(num, done){
     return L.divIcon({
@@ -274,6 +334,7 @@
     function initMap(){
       map = L.map('map', {zoomControl:true}).setView([62.0, 15.0], 5);
       addBaseLayers(map);
+      addLocationDot(map);
 
       if (navigator.geolocation){
         navigator.geolocation.getCurrentPosition(function(pos){
@@ -477,6 +538,7 @@
     function initMap(){
       map = L.map('overview-map', {zoomControl:true});
       addBaseLayers(map);
+      addLocationDot(map);
 
       stops.forEach(function(s,i){
         stopMarkers[s.id] = L.marker(parseLatLng(s.loc), {icon:numIcon(i+1, !!doneMap[s.id])}).addTo(map);
